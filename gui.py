@@ -4,6 +4,9 @@ import string
 import tkFont
 from pinyin.hmm import viterbi as vb
 import pinyincut
+from TrieTree import TrieTree
+from PIL import Image
+
 alphabets='abcdefghijklmnopqrstuvwxyz'
 
 #number = ['0', '1', '2'. '3', '4', '5', '6', '7', '8', '9']
@@ -12,6 +15,11 @@ PAGE_SIZE = 5
 page_index = 0
 current_page_size = 0
 cursor_location = 0
+
+long_sentences = TrieTree()
+long_sentences.read_file('dict.txt')
+
+
 def pagedown():
     global  candidate, page_index, PAGE_SIZE, current_page_size,cursor_location
      
@@ -40,32 +48,75 @@ def pageup():
         result.append(str(i) + "." + candidate[page_index*PAGE_SIZE + i - 1][0])
     return '\n'.join(result)
 
-def lookup_result(word):
+def clikpageup():
+    global E1, T1
+    result = pageup()
+    E1.update()
+    T1.delete(1.0,END)
+    T1.insert(END,result)
+def clikpagedown():
+    global E1, T1
+    result = pagedown()
+    E1.update()
+    T1.delete(1.0,END)
+    T1.insert(END,result)
+
+def lookup_long_sentences(word):
+    #global long_sentences
+    
     word = word.lower()
+    word = word.replace(' ', '')
+    longsent = long_sentences.search(word)
+    cand = []
+    for sent in longsent:
+        cand.append((sent[1], sent[2], sent[0]))#word prob and pinyin and freq is bigger than any prob
+    return cand
+
+
+
+def lookup_result(word):
+    
+    global  candidate, page_index, PAGE_SIZE, current_page_size, cursor_location
+    word = word.lower()
+        
+    
+    
     pinyin_sequen_list = pinyincut.cut(word)
     path_num = len(pinyin_sequen_list)
     #path_v_map = {}
-    global  candidate, page_index, PAGE_SIZE, current_page_size, cursor_location
-    candidate = []
+    
+    candidate = lookup_long_sentences(word)
     for pinyin_sequen in pinyin_sequen_list:
         if len(pinyin_sequen):
             V, index = vb.viterbi(pinyin_sequen)
             for charac_zh, prob in V.items():
                 candidate.append((charac_zh, prob, pinyin_sequen[0:index]))
             #path_v_map=dict(path_v_map, **V)
+    
+    candiset = set()
+    index = 0
+    while index < len(candidate):        
+        tup = candidate[index]
+        if tup[0] in candiset:
+            candidate.remove(tup)
+            continue
+        else:
+            candiset.add(tup[0])
+        index = index + 1
     #i is used to indicate id
-    candidate = sorted(candidate, key=lambda d: d[0], reverse=True)
+    candidate = sorted(candidate, key=lambda d: d[1], reverse=True)
+    #remove congfu de
+    
+    
     page_index = 0
     current_page_size = min(PAGE_SIZE, len(candidate))
     result = []
     for i in range(1, current_page_size + 1):
         result.append(str(i) + "." + candidate[page_index*PAGE_SIZE + i - 1][0])
-    
     return '\n'.join(result)
     #for path, pro in sorted(path_v_map.items(), key=lambda d: d[1], reverse=True):
     #    result.append(path)
-    print 'candidate size is ', len(candidate)
-    return '\n'.join(result)
+    
 
 def on_press(event):
     global E1,T1, T2, candidate, PAGE_SIZE, page_index, current_page_size, cursor_location
@@ -95,9 +146,11 @@ def on_press(event):
             T2.insert(END, candidate[page_index * PAGE_SIZE +(event.keycode - 49)][0])  
              #zhao到最后一个拼音的位置
             choesen_list = candidate[page_index * PAGE_SIZE +(event.keycode - 49)][2]
-            choosen_pinyin = "".join(choesen_list)
-            last_pinyin_index = word.find(choesen_list[-1])
-            delete_index = last_pinyin_index + len(choesen_list[-1])
+            
+            last_pinyin_index = 0
+            for pin in choesen_list:
+                last_pinyin_index = word.find(pin, last_pinyin_index)
+            delete_index = min(last_pinyin_index + len(choesen_list[-1]), cursor_location)
             print 'lastpinyin index', last_pinyin_index
             print 'delte_last', choesen_list[-1]
             print 'delte_index', delete_index
@@ -118,10 +171,14 @@ def on_press(event):
         if (event.keycode - 96) in range(1, current_page_size+ 1):
             T2.insert(END, candidate[page_index * PAGE_SIZE +(event.keycode - 97)][0])  
              #zhao到最后一个拼音的位置
-            choesen_list = candidate[page_index * PAGE_SIZE +(event.keycode - 49)][2]
-            choosen_pinyin = "".join(choesen_list)
-            last_pinyin_index = word.find(choesen_list[-1])
-            delete_index = last_pinyin_index + len(choesen_list[-1])
+            choesen_list = candidate[page_index * PAGE_SIZE +(event.keycode - 97)][2]
+            last_pinyin_index = 0
+            for pin in choesen_list:
+                last_pinyin_index = word.find(pin, last_pinyin_index)
+            delete_index = min(last_pinyin_index + len(choesen_list[-1]), cursor_location)
+            print 'lastpinyin index', last_pinyin_index
+            print 'delte_last', choesen_list[-1]
+            print 'delte_index', delete_index
             E1.delete(0, delete_index)
             word = E1.get().encode('utf-8')
             cursor_location =  cursor_location - delete_index
@@ -137,10 +194,14 @@ def on_press(event):
         if len(candidate):
             T2.insert(END, candidate[page_index * PAGE_SIZE][0])  
              #zhao到最后一个拼音的位置
-            choesen_list = candidate[page_index * PAGE_SIZE +(event.keycode - 49)][2]
-            choosen_pinyin = "".join(choesen_list)
-            last_pinyin_index = word.find(choesen_list[-1])
-            delete_index = last_pinyin_index + len(choesen_list[-1])
+            choesen_list = candidate[page_index * PAGE_SIZE][2]
+            last_pinyin_index = 0
+            for pin in choesen_list:
+                last_pinyin_index = word.find(pin, last_pinyin_index)
+            delete_index = min(last_pinyin_index + len(choesen_list[-1]), cursor_location)
+            print 'lastpinyin index', last_pinyin_index
+            print 'delte_last', choesen_list[-1]
+            print 'delte_index', delete_index
             E1.delete(0, delete_index)
             word = E1.get().encode('utf-8')
             cursor_location =  cursor_location - delete_index
@@ -188,37 +249,57 @@ def on_esc(event):
     E1.delete(0, END)
 
 root = Tk()
-root.title("SkyInput——We are little fairy")
+root.title("SkyInput——We are little fairies")
 root.resizable(0,0)
 root.iconbitmap('skyinput.ico')
+
 
 frame1 = Frame(root,width=480,height=50)
 frame1.pack_propagate(0)
 frame1.pack()
 
-framego = Frame(root,width=480,height=480)
-framego.pack_propagate(0)
-framego.pack()
 
-frame2 = Frame(framego,width=240,height=480)
+frame2 = Frame(root,width=480,height=180)
 frame2.pack_propagate(0)
-frame2.pack(side=LEFT)
+frame2.pack()
 
-frame3 = Frame(framego,width=240,height=480)
+frame3 = Frame(root,width=480,height=300)
 frame3.pack_propagate(0)
-frame3.pack(side=RIGHT)
+frame3.pack()
+
+frameB = Frame(frame2,width=50,height=180)
+frameB.pack_propagate(0)
+frameB.pack(side=RIGHT,expand=True)
+frameT1 = Frame(frame2,width=430,height=180)
+frameT1.pack_propagate(0)
+frameT1.pack(side=LEFT,expand=True)
 
 
-L1 = Label(frame1,text="SkyInput", fg = 'Chocolate')
+L1 = Label(frame1, text="SkyInput", fg = 'Chocolate', font=tkFont.Font(size=16,weight='bold'))
 L1.pack(side=LEFT)
 
-E1 = Entry(frame1,width=64,font=tkFont.Font(size=25,weight='bold'))
+E1 = Entry(frame1,width=400,font=tkFont.Font(size=20,weight='bold'))
 E1.pack(side=RIGHT,expand=True)
 E1.focus_set()
-T1 = Text(frame2,height=480,wrap='word',fg = 'Chocolate',font=tkFont.Font(size=30,weight='bold'))
+T1 = Text(frameT1,height=480,wrap='word',fg = 'Chocolate',font=tkFont.Font(size=25,weight='bold'))
 T1.pack(expand=True)
 T2 = Text(frame3,height=480,wrap='word',font=tkFont.Font(size=20))
 T2.pack(expand=True)
+
+frameBup = Frame(frameB,width=50,height=90)
+frameBup.pack_propagate(0)
+frameBup.pack(side=TOP,expand=True)
+frameBdown = Frame(frameB,width=50,height=90)
+frameBdown.pack_propagate(0)
+frameBdown.pack(side=BOTTOM,expand=True)
+
+photoup=PhotoImage(file='up.gif')
+
+photodown=PhotoImage(file='down.gif')
+Bup = Button(frameBup, image = photoup, command = clikpageup)
+Bup.pack()
+Bdown = Button(frameBdown, image= photodown, command = clikpagedown)
+Bdown.pack()
 
 E1.bind("<KeyRelease>",on_press)
 root.bind("<Alt-d>",on_alt_d)
